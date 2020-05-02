@@ -1,5 +1,6 @@
 from locust import HttpLocust, TaskSet, between
 from bs4 import BeautifulSoup
+from faker import Faker
 import random, time
 
 USER_CREDENTIALS = [
@@ -47,6 +48,33 @@ def about(self):
     response = self.client.get("/about")
     fetch_static_assets(self, response)
 
+def createTopic(self):
+    # Go to the add topic page and fetch static assets.
+    response = self.client.get("/node/add/topic")
+    fetch_static_assets(self, response)
+
+    # Find the Drupal form build id and token.
+    content = BeautifulSoup(response.content, "html.parser")
+    build_id = content.body.find('input', {'name': 'form_build_id'})['value']
+    form_token = content.body.find('input', {'data-drupal-selector': 'edit-node-topic-form-form-token'})['value']
+
+    # Submit the form.
+    fake = Faker()
+    response = self.client.post("/node/add/topic", {
+        "title[0][value]": fake.sentence(),
+        "body[0][value]": fake.text(),
+        "field_topic_type": 1,
+        "groups": "_none",
+        "field_content_visibility": "community",
+        "field_topic_comments[0][status]": 2,
+        "status[value]": 1,
+        "form_build_id": build_id,
+        "form_token": form_token,
+        "form_id": "node_topic_form",
+        "op": "Save"
+    })
+    fetch_static_assets(self, response)
+
 def drupalLogin(self):
     # Get a random user to login with.
     username, password = random.choice(USER_CREDENTIALS)
@@ -60,13 +88,14 @@ def drupalLogin(self):
     build_id = content.body.find('input', {'name': 'form_build_id'})['value']
 
     # Submit the login form.
-    self.client.post("/user/login", {
+    response = self.client.post("/user/login", {
         "name_or_mail": username,
         "pass": password,
         "form_id": "social_user_login_form",
         "form_build_id": build_id,
         "op": "Log in"
     })
+    fetch_static_assets(self, response)
 
 def drupalLogout(self):
     # Go to the logout page and fetch static assets.
@@ -74,8 +103,8 @@ def drupalLogout(self):
     fetch_static_assets(self, response)
 
 class UserBehavior(TaskSet):
-    # Switch between navigating to the homepage and the about page.
-    tasks = {index: 1, about: 1}
+    # Switch randomly between different tasks.
+    tasks = {index: 1, about: 1, createTopic: 1}
 
     def on_start(self):
         drupalLogin(self)
